@@ -1,0 +1,16 @@
+drain3:
+  mask_delimiters: [" ", ":", ",", ";", "=", "\"", "'"]
+  sim_th: 0.4
+  depth: 4
+  max_children: 100
+  max_clusters: 1000
+  extra_delimiters: ["_", "-", "/"]
+
+preprocessing:
+  timezone: "UTC"
+  session_window_minutes: 30
+
+model:
+  lstm_units: 64
+  epochs: 10
+  batch_size: 32
