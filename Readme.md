@@ -14,7 +14,7 @@ The system also uses an ensemble approach that combines predictions from all thr
 
 ## Features
 
-- Log parsing and template extraction using [Drain3](https://github.com/IBM/Drain3)
+- Log parsing and template extraction using [Drain3](https://github.com/logpai/Drain3)
 - TF-IDF vectorization of log templates
 - Multiple LSTM-based anomaly detection models
 - Ensemble model combining multiple detection techniques
@@ -107,18 +107,7 @@ The system generates several output files:
 - Performance metrics (`.json` and `.pkl` files)
 - Summary analysis (`.csv` and `.txt` files)
 
-## Citation
 
-If you use this code in your research, please cite:
-
-```
-@software{log_anomaly_detection,
-  author = {Your Name},
-  title = {Log Anomaly Detection System},
-  year = {2025},
-  url = {https://github.com/yourusername/log-anomaly-detection}
-}
-```
 
 ## License
 
@@ -126,5 +115,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgements
 
-- [Drain3](https://github.com/IBM/Drain3) for log parsing
+- [Drain3](https://github.com/logpai/Drain3) for log parsing
 - TensorFlow and Keras for deep learning implementation
