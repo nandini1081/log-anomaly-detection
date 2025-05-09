@@ -25,15 +25,15 @@ The system also uses an ensemble approach that combines predictions from all thr
 
 ### Prerequisites
 
-- Python 3.8+
-- pip
+- Python 3.11.9 (required, other versions may cause compatibility issues)
+- pip (latest version recommended)
 - Virtual environment (recommended)
 
 ### Setup
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/log-anomaly-detection.git
+git clone https://github.com/nandini1081/log-anomaly-detection.git
 cd log-anomaly-detection
 ```
 
@@ -48,14 +48,26 @@ python -m venv venv
 source venv/bin/activate
 ```
 
-3. Install dependencies:
+3. Upgrade pip:
+```bash
+python -m pip install --upgrade pip
+```
+
+4. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
 ### Handling Dependency Issues
 
-If you encounter dependency issues with TensorFlow, try:
+If you encounter dependency issues, try:
+
+For ml-dtypes errors (common on Windows):
+```bash
+pip install ml-dtypes==0.5.0 --no-build-isolation
+```
+
+For TensorFlow  errors, try:
 
 ```bash
 # For CPU-only TensorFlow
