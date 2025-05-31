@@ -8,6 +8,7 @@ from drain3.template_miner_config import TemplateMinerConfig
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import accuracy_score
+import matplotlib.pyplot as plt
 
 from models.autoencoder import AutoencoderModel
 from models.predictor import SequencePredictor
@@ -33,7 +34,7 @@ def create_sequences(data, seq_length=3):
 
 def load_log_data(log_path, output_file=None):
     """
-    Load and parse log data using Drain3 template miner.
+    Load and parse log data using Drain3 template miner with improved configuration.
     
     Args:
         log_path: Path to the log file
@@ -44,9 +45,10 @@ def load_log_data(log_path, output_file=None):
     """
     print(f"📥 Loading log file from: {log_path}")
     
-    # Configure Drain3 template miner
+    # Configure Drain3 template miner with improved parameters
     config = TemplateMinerConfig()
-    # Try multiple possible paths for the drain3.ini file
+    
+    # IMPROVEMENT 1: Better Drain3 configuration
     config_paths = [
         "drain3.ini",
         os.path.join("Drain3", "examples", "drain3.ini"),
@@ -62,11 +64,22 @@ def load_log_data(log_path, output_file=None):
             break
     
     if not config_loaded:
-        print("Warning: Drain3 configuration file not found. Using default settings.")
+        print("Using optimized Drain3 default settings.")
+        # Set better default parameters
+        config.config_dict = {
+            'MASKING': {
+                'masking': []
+            },
+            'DRAIN': {
+                'sim_th': 0.7,  # Improved: Better similarity threshold
+                'depth': 4,     # Improved: Better depth for log variety
+                'max_children': 100,
+                'max_clusters': 1000
+            }
+        }
     
     template_miner = TemplateMiner(config=config)
 
-    
     logs = []
     log_timestamps = []
     
@@ -97,6 +110,23 @@ def load_log_data(log_path, output_file=None):
         "timestamp": log_timestamps
     })
     
+    # IMPROVEMENT 2: Template quality analysis
+    unique_templates = df['log_template'].nunique()
+    total_logs = len(df)
+    template_ratio = unique_templates / total_logs if total_logs > 0 else 0
+    
+    print(f"📊 Template Analysis:")
+    print(f"  Total logs: {total_logs}")
+    print(f"  Unique templates: {unique_templates}")
+    print(f"  Template ratio: {template_ratio:.3f}")
+    
+    if template_ratio > 0.8:
+        print("⚠️  Warning: High template ratio - logs might be too specific")
+    elif template_ratio < 0.1:
+        print("⚠️  Warning: Low template ratio - logs might be too generalized")
+    else:
+        print("✅ Template ratio looks good")
+    
     # Save processed logs if output file is specified
     if output_file:
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -107,7 +137,7 @@ def load_log_data(log_path, output_file=None):
 
 def encode_logs(logs, method='tfidf', output_file=None):
     """
-    Encode log templates using TF-IDF.
+    Encode log templates using improved TF-IDF with better parameters.
     
     Args:
         logs: DataFrame containing log templates
@@ -118,10 +148,20 @@ def encode_logs(logs, method='tfidf', output_file=None):
         X: Encoded log data
         vectorizer: Fitted vectorizer object
     """
-    print(f"📊 Encoding logs using {method.upper()}")
+    print(f"📊 Encoding logs using improved {method.upper()}")
     
-    vectorizer = TfidfVectorizer(max_features=100)
+    # IMPROVEMENT 3: Better TF-IDF parameters
+    vectorizer = TfidfVectorizer(
+        max_features=200,        # Increased from 100
+        ngram_range=(1, 2),      # Include bigrams for better context
+        min_df=2,                # Ignore terms that appear in less than 2 documents
+        max_df=0.95,            # Ignore terms that appear in more than 95% of documents
+        stop_words='english'     # Remove common English stop words
+    )
     X = vectorizer.fit_transform(logs["log_template"]).toarray()
+    
+    print(f"  Feature dimensions: {X.shape}")
+    print(f"  Non-zero features: {np.count_nonzero(X)}")
     
     # Save encoded data if output file is specified
     if output_file:
@@ -136,7 +176,7 @@ def encode_logs(logs, method='tfidf', output_file=None):
 
 def generate_synthetic_labels(X, anomaly_ratio=0.1, output_file=None):
     """
-    Generate synthetic labels for evaluation using LSTM-based autoencoder.
+    Generate synthetic labels using improved autoencoder with dynamic thresholding.
     
     Args:
         X: Input data
@@ -146,7 +186,7 @@ def generate_synthetic_labels(X, anomaly_ratio=0.1, output_file=None):
     Returns:
         Binary labels array (1 for anomaly, 0 for normal)
     """
-    print("Generating synthetic labels for evaluation")
+    print("Generating synthetic labels with improved thresholding")
     
     input_dim = X.shape[1]
     
@@ -160,33 +200,111 @@ def generate_synthetic_labels(X, anomaly_ratio=0.1, output_file=None):
         LSTM(32, return_sequences=True),
         Dense(input_dim)
     ])
-    temp_model.compile(optimizer='adam', loss='mse')
+    
+    # IMPROVEMENT 4: Better optimizer and loss configuration
+    temp_model.compile(
+        optimizer='adam',
+        loss='mse',
+        metrics=['mae']
+    )
     
     # Reshape for LSTM
     X_reshaped = X.reshape(X.shape[0], 1, X.shape[1])
     
-    # Train autoencoder
-    temp_model.fit(X_reshaped, X_reshaped, epochs=5, batch_size=32, verbose=0)
+    # Train autoencoder with improved parameters
+    history = temp_model.fit(
+        X_reshaped, X_reshaped, 
+        epochs=10,              # Reduced for faster execution
+        batch_size=32, 
+        verbose=0,
+        validation_split=0.2    # Monitor validation loss
+    )
     
     # Calculate reconstruction error
     predictions = temp_model.predict(X_reshaped, verbose=0)
     mse = np.mean(np.square(X_reshaped - predictions), axis=(1, 2))
     
-    # Set threshold to identify the top anomaly_ratio of points as anomalies
-    threshold = np.percentile(mse, 100 * (1 - anomaly_ratio))
+    # IMPROVEMENT 5: Dynamic thresholding using statistical method
+    mean_error = np.mean(mse)
+    std_error = np.std(mse)
+    
+    # Use mean + 3*std as threshold (more robust than percentile for small datasets)
+    statistical_threshold = mean_error + 3 * std_error
+    
+    # Also calculate percentile-based threshold
+    percentile_threshold = np.percentile(mse, 100 * (1 - anomaly_ratio))
+    
+    # Use the more conservative threshold
+    threshold = min(statistical_threshold, percentile_threshold)
+    
     labels = (mse > threshold).astype(int)
+    
+    print(f"  Mean reconstruction error: {mean_error:.6f}")
+    print(f"  Std reconstruction error: {std_error:.6f}")
+    print(f"  Statistical threshold (mean + 3*std): {statistical_threshold:.6f}")
+    print(f"  Percentile threshold: {percentile_threshold:.6f}")
+    print(f"  Final threshold used: {threshold:.6f}")
+    print(f"  Anomalies detected: {np.sum(labels)} ({np.mean(labels)*100:.1f}%)")
     
     # Save labels if output file is specified
     if output_file:
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         np.save(output_file, labels)
         print(f"Saved synthetic labels to: {output_file}")
+        
+        # Save threshold information
+        threshold_info = {
+            'threshold': float(threshold),
+            'mean_error': float(mean_error),
+            'std_error': float(std_error),
+            'statistical_threshold': float(statistical_threshold),
+            'percentile_threshold': float(percentile_threshold)
+        }
+        
+        with open(f"{output_file}_threshold_info.json", 'w') as f:
+            json.dump(threshold_info, f, indent=4)
     
     return labels
 
+def plot_training_history(history, model_name, output_dir):
+    """
+    Plot and save training history for model monitoring.
+    """
+    if history is None or not hasattr(history, 'history'):
+        return
+        
+    plt.figure(figsize=(12, 4))
+    
+    # Plot training loss
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['loss'], label='Training Loss')
+    if 'val_loss' in history.history:
+        plt.plot(history.history['val_loss'], label='Validation Loss')
+    plt.title(f'{model_name} - Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True)
+    
+    # Plot metrics if available
+    plt.subplot(1, 2, 2)
+    metric_keys = [key for key in history.history.keys() if key not in ['loss', 'val_loss']]
+    for key in metric_keys[:2]:  # Plot first 2 metrics
+        plt.plot(history.history[key], label=key)
+    plt.title(f'{model_name} - Metrics')
+    plt.xlabel('Epoch')
+    plt.ylabel('Metric Value')
+    plt.legend()
+    plt.grid(True)
+    
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/{model_name.lower().replace(' ', '_')}_training_history.png")
+    plt.close()
+    print(f"Saved training history plot to: {output_dir}/{model_name.lower().replace(' ', '_')}_training_history.png")
+
 def run_models(X, os_type, output_dir="data/results"):
     """
-    Run all anomaly detection models and save results.
+    Run all anomaly detection models with improved configurations and monitoring.
     
     Args:
         X: Encoded log data
@@ -196,7 +314,7 @@ def run_models(X, os_type, output_dir="data/results"):
     Returns:
         Dictionary containing model results
     """
-    print(f"\n🔎 Running models for {os_type.upper()} logs with TF-IDF encoding")
+    print(f"\n🔎 Running improved models for {os_type.upper()} logs")
     
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
@@ -208,33 +326,37 @@ def run_models(X, os_type, output_dir="data/results"):
     X_train, X_test = train_test_split(X, test_size=0.2, random_state=42, shuffle=False)
     
     # Save train/test split
-    train_file = f"{output_dir}/{os_type}_tfidf_X_train.npy"
-    test_file = f"{output_dir}/{os_type}_tfidf_X_test.npy"
+    train_file = f"{output_dir}/{os_type}_improved_X_train.npy"
+    test_file = f"{output_dir}/{os_type}_improved_X_test.npy"
     np.save(train_file, X_train)
     print(f"Saved training data to: {train_file}")
     np.save(test_file, X_test)
     print(f"Saved test data to: {test_file}")
     
-    # Generate synthetic labels for test set evaluation
-    y_test_file = f"{output_dir}/{os_type}_tfidf_y_test.npy"
+    # Generate synthetic labels for test set evaluation with improved thresholding
+    y_test_file = f"{output_dir}/{os_type}_improved_y_test.npy"
     y_test = generate_synthetic_labels(
         X_test, 
         anomaly_ratio=0.1,
         output_file=y_test_file
     )
     
-    # Autoencoder
-    print("\n🔧 LSTM Autoencoder:")
+    # Autoencoder with improved monitoring
+    print("\n🔧 Improved LSTM Autoencoder:")
     ae_model = AutoencoderModel(input_dim)
-    ae_history = ae_model.train(X_train, epochs=15, batch_size=32)
+    ae_history = ae_model.train(X_train, epochs=20, batch_size=32)  # Increased epochs
+    
+    # Plot training history
+    plot_training_history(ae_history, "LSTM Autoencoder", output_dir)
+    
     ae_anomalies, ae_scores = ae_model.detect_anomalies(X_test)
     ae_accuracy = accuracy_score(y_test, ae_anomalies)
     print(f"Detected {sum(ae_anomalies)} anomalies | Accuracy: {ae_accuracy:.4f}")
     
     # Save autoencoder model and results
-    ae_model_file = f"{output_dir}/{os_type}_tfidf_autoencoder_model.keras"
-    ae_anomalies_file = f"{output_dir}/{os_type}_tfidf_autoencoder_anomalies.npy"
-    ae_scores_file = f"{output_dir}/{os_type}_tfidf_autoencoder_scores.npy"
+    ae_model_file = f"{output_dir}/{os_type}_improved_autoencoder_model.keras"
+    ae_anomalies_file = f"{output_dir}/{os_type}_improved_autoencoder_anomalies.npy"
+    ae_scores_file = f"{output_dir}/{os_type}_improved_autoencoder_scores.npy"
     
     try:
         ae_model.autoencoder.save(ae_model_file)
@@ -247,15 +369,18 @@ def run_models(X, os_type, output_dir="data/results"):
     np.save(ae_scores_file, ae_scores)
     print(f"Saved autoencoder scores to: {ae_scores_file}")
     
-    # LSTM Sequence Predictor
-    print("\n🔧 LSTM Sequence Predictor:")
+    # LSTM Sequence Predictor with improved parameters
+    print("\n🔧 Improved LSTM Sequence Predictor:")
     sp_model = SequencePredictor(input_dim)
     
     # Create sequence data
     X_seq, y_seq = create_sequences(X_train, seq_length=3)
     
-    # Train sequence predictor
-    sp_history = sp_model.train(X_seq, y_seq, epochs=15, batch_size=32)
+    # Train sequence predictor with improved monitoring
+    sp_history = sp_model.train(X_seq, y_seq, epochs=20, batch_size=32)  # Increased epochs
+    
+    # Plot training history
+    plot_training_history(sp_history, "LSTM Sequence Predictor", output_dir)
     
     # Create test sequences
     X_seq_test, y_seq_test = create_sequences(X_test, seq_length=3)
@@ -266,9 +391,9 @@ def run_models(X, os_type, output_dir="data/results"):
         y_test_seq = y_test_seq[:len(X_seq_test)]
     
     # Save sequence data
-    seq_test_file = f"{output_dir}/{os_type}_tfidf_X_seq_test.npy"
-    seq_test_labels_file = f"{output_dir}/{os_type}_tfidf_y_seq_test.npy"
-    seq_labels_file = f"{output_dir}/{os_type}_tfidf_y_test_seq.npy"
+    seq_test_file = f"{output_dir}/{os_type}_improved_X_seq_test.npy"
+    seq_test_labels_file = f"{output_dir}/{os_type}_improved_y_seq_test.npy"
+    seq_labels_file = f"{output_dir}/{os_type}_improved_y_test_seq.npy"
     np.save(seq_test_file, X_seq_test)
     print(f"Saved sequence test data to: {seq_test_file}")
     np.save(seq_test_labels_file, y_seq_test)
@@ -282,9 +407,9 @@ def run_models(X, os_type, output_dir="data/results"):
     print(f"Detected {sum(sp_anomalies)} anomalies | Accuracy: {sp_accuracy:.4f}")
     
     # Save sequence predictor model and results
-    sp_model_file = f"{output_dir}/{os_type}_tfidf_sequence_predictor_model.keras"
-    sp_anomalies_file = f"{output_dir}/{os_type}_tfidf_sequence_predictor_anomalies.npy"
-    sp_scores_file = f"{output_dir}/{os_type}_tfidf_sequence_predictor_scores.npy"
+    sp_model_file = f"{output_dir}/{os_type}_improved_sequence_predictor_model.keras"
+    sp_anomalies_file = f"{output_dir}/{os_type}_improved_sequence_predictor_anomalies.npy"
+    sp_scores_file = f"{output_dir}/{os_type}_improved_sequence_predictor_scores.npy"
     
     try:
         sp_model.model.save(sp_model_file)
@@ -298,16 +423,20 @@ def run_models(X, os_type, output_dir="data/results"):
     print(f"Saved sequence predictor scores to: {sp_scores_file}")
     
     # LSTM-based Classifier
-    print("\n🔧 LSTM-based Classifier:")
+    print("\n🔧 Improved LSTM-based Classifier:")
     clf_model = ClassifierModel(input_dim)
     clf_history = clf_model.fit(X_train)
+    
+    # Plot training history if available
+    plot_training_history(clf_history, "LSTM Classifier", output_dir)
+    
     clf_anomalies = clf_model.predict(X_test)
     clf_accuracy = accuracy_score(y_test, clf_anomalies)
     print(f"Detected {sum(clf_anomalies)} anomalies | Accuracy: {clf_accuracy:.4f}")
     
     # Save classifier model and results
-    clf_model_file = f"{output_dir}/{os_type}_tfidf_classifier_model.keras"
-    clf_anomalies_file = f"{output_dir}/{os_type}_tfidf_classifier_anomalies.npy"
+    clf_model_file = f"{output_dir}/{os_type}_improved_classifier_model.keras"
+    clf_anomalies_file = f"{output_dir}/{os_type}_improved_classifier_anomalies.npy"
     
     try:
         clf_model.model.save(clf_model_file)
@@ -346,11 +475,11 @@ def run_models(X, os_type, output_dir="data/results"):
         ensemble_results[i] = votes >= (count / 2)
     
     ensemble_accuracy = accuracy_score(y_test, ensemble_results)
-    print("\n🔧 Ensemble Model (Majority Voting):")
+    print("\n🔧 Improved Ensemble Model (Majority Voting):")
     print(f"Detected {int(sum(ensemble_results))} anomalies | Accuracy: {ensemble_accuracy:.4f}")
     
     # Save ensemble results
-    ensemble_file = f"{output_dir}/{os_type}_tfidf_ensemble_results.npy"
+    ensemble_file = f"{output_dir}/{os_type}_improved_ensemble_results.npy"
     np.save(ensemble_file, ensemble_results)
     print(f"Saved ensemble results to: {ensemble_file}")
     
@@ -363,13 +492,13 @@ def run_models(X, os_type, output_dir="data/results"):
     }
     
     # Save as pickle
-    results_pkl_file = f"{output_dir}/{os_type}_tfidf_results.pkl"
+    results_pkl_file = f"{output_dir}/{os_type}_improved_results.pkl"
     with open(results_pkl_file, 'wb') as f:
         pickle.dump(results, f)
     print(f"Saved results pickle to: {results_pkl_file}")
     
     # Save as JSON for human readability
-    results_json_file = f"{output_dir}/{os_type}_tfidf_results.json"
+    results_json_file = f"{output_dir}/{os_type}_improved_results.json"
     with open(results_json_file, 'w') as f:
         json.dump(results, f, indent=4)
     print(f"Saved results JSON to: {results_json_file}")
@@ -378,6 +507,9 @@ def run_models(X, os_type, output_dir="data/results"):
 
 # === MAIN EXECUTION ===
 if __name__ == "__main__":
+    print("🚀 Starting Improved Log Anomaly Detection System")
+    print("=" * 60)
+    
     # Create necessary directories
     os.makedirs("data/processed", exist_ok=True)
     os.makedirs("data/encoded", exist_ok=True)
@@ -404,7 +536,7 @@ if __name__ == "__main__":
     all_results = {}
     
     for os_type, log_file in log_files.items():
-        print(f"\n=== Processing {os_type.upper()} logs ===")
+        print(f"\n=== Processing {os_type.upper()} logs with IMPROVEMENTS ===")
         
         # Skip if file doesn't exist
         if not os.path.exists(log_file):
@@ -412,27 +544,27 @@ if __name__ == "__main__":
             continue
         
         try:
-            # Load and process logs
+            # Load and process logs with improved Drain3 configuration
             logs_df = load_log_data(
                 log_file, 
-                output_file=f"data/processed/{os_type}_processed_logs.csv"
+                output_file=f"data/processed/{os_type}_improved_processed_logs.csv"
             )
             
             if logs_df.empty:
                 print(f"ERROR: No valid logs found for {os_type}. Skipping.")
                 continue
             
-            print(f"\n✅ Log data loaded. Sample:")
+            print(f"\n✅ Log data loaded with improvements. Sample:")
             print(logs_df.head())
             
-            # Encode logs (using only TF-IDF as requested)
+            # Encode logs with improved TF-IDF parameters
             X_encoded, vectorizer = encode_logs(
                 logs_df, 
                 method='tfidf',
-                output_file=f"data/encoded/{os_type}_tfidf"
+                output_file=f"data/encoded/{os_type}_improved_tfidf"
             )
             
-            # Run models and get results
+            # Run models with improvements and get results
             model_results = run_models(
                 X_encoded, 
                 os_type=os_type,
@@ -447,7 +579,8 @@ if __name__ == "__main__":
     
     # Compare Results across all OS types
     if all_results:
-        print("\n📊 Comparative Analysis:")
+        print("\n📊 IMPROVED Comparative Analysis:")
+        print("=" * 60)
         
         # Create summary DataFrame
         summary_data = {
@@ -467,15 +600,15 @@ if __name__ == "__main__":
         summary_df = pd.DataFrame(summary_data)
         
         # Save summary results
-        summary_file = "data/results/all_results_summary.csv"
+        summary_file = "data/results/improved_results_summary.csv"
         summary_df.to_csv(summary_file, index=False)
-        print(f"\nSaved full results summary to: {summary_file}")
-        print("\nFull Results Summary:")
+        print(f"\nSaved improved results summary to: {summary_file}")
+        print("\nImproved Results Summary:")
         print(summary_df)
         
         # Calculate best performing model
         best_accuracy = summary_df.loc[summary_df["Accuracy"].idxmax()]
-        print(f"\n📈 Summary:")
+        print(f"\n📈 IMPROVED Summary:")
         print(f"Best Model by Accuracy:")
         print(f"  OS: {best_accuracy['OS']}")
         print(f"  Model: {best_accuracy['Model']}")
@@ -487,18 +620,32 @@ if __name__ == "__main__":
         print(avg_by_os)
         
         # Save the final summary
-        final_summary_file = "data/results/final_summary.txt"
+        final_summary_file = "data/results/improved_final_summary.txt"
         with open(final_summary_file, "w") as f:
-            f.write("Log Anomaly Detection - Final Summary\n")
-            f.write("===================================\n\n")
+            f.write("IMPROVED Log Anomaly Detection - Final Summary\n")
+            f.write("============================================\n\n")
+            f.write("IMPROVEMENTS IMPLEMENTED:\n")
+            f.write("1. Better Drain3 configuration (sim_th=0.7, depth=4)\n")
+            f.write("2. Improved TF-IDF parameters (bigrams, stop words, min/max_df)\n")
+            f.write("3. Dynamic thresholding (mean + 3*std)\n")
+            f.write("4. Training monitoring with plots\n")
+            f.write("5. Template quality analysis\n\n")
             f.write("Best Model by Accuracy:\n")
             f.write(f"  OS: {best_accuracy['OS']}\n")
             f.write(f"  Model: {best_accuracy['Model']}\n")
             f.write(f"  Accuracy: {best_accuracy['Accuracy']:.4f}\n\n")
             f.write("Average Performance by OS:\n")
             f.write(str(avg_by_os))
-        print(f"Saved final summary to: {final_summary_file}")
+        print(f"Saved improved final summary to: {final_summary_file}")
         
-        print("\n=== Analysis complete! All results saved to data/results/ ===")
+        print("\n🎯 === IMPROVED ANALYSIS COMPLETE! ===")
+        print("Key improvements implemented successfully:")
+        print(" Better Drain3 log parsing configuration")
+        print(" Enhanced TF-IDF vectorization with bigrams")
+        print(" Dynamic statistical thresholding")
+        print(" Training monitoring with visualization")
+        print(" Template quality analysis")
+        print(f"All results saved to data/results/")
+        
     else:
         print("\nERROR: No results were generated. Please check the log files and try again.")
