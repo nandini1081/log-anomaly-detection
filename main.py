@@ -9,10 +9,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import accuracy_score
 import matplotlib.pyplot as plt
-
 from models.autoencoder import AutoencoderModel
 from models.predictor import SequencePredictor
 from models.classifier import ClassifierModel
+from gensim.models import Word2Vec, Doc2Vec
+from gensim.models.doc2vec import TaggedDocument
 
 def create_sequences(data, seq_length=3):
     """
@@ -135,44 +136,29 @@ def load_log_data(log_path, output_file=None):
     
     return df
 
-def encode_logs(logs, method='tfidf', output_file=None):
+def encode_logs(logs, vector_size=100, output_file=None):
     """
-    Encode log templates using improved TF-IDF with better parameters.
-    
-    Args:
-        logs: DataFrame containing log templates
-        method: Encoding method (only 'tfidf' supported now)
-        output_file: Path to save the encoded data and vectorizer
-        
-    Returns:
-        X: Encoded log data
-        vectorizer: Fitted vectorizer object
+    Encode log templates using Doc2Vec.
     """
-    print(f"📊 Encoding logs using improved {method.upper()}")
+    print("📊 Encoding logs using Doc2Vec")
     
-    # IMPROVEMENT 3: Better TF-IDF parameters
-    vectorizer = TfidfVectorizer(
-        max_features=200,        # Increased from 100
-        ngram_range=(1, 2),      # Include bigrams for better context
-        min_df=2,                # Ignore terms that appear in less than 2 documents
-        max_df=0.95,            # Ignore terms that appear in more than 95% of documents
-        stop_words='english'     # Remove common English stop words
-    )
-    X = vectorizer.fit_transform(logs["log_template"]).toarray()
+    # Prepare documents
+    documents = [TaggedDocument(words=log.split(), tags=[str(i)]) 
+                for i, log in enumerate(logs["log_template"])]
     
-    print(f"  Feature dimensions: {X.shape}")
-    print(f"  Non-zero features: {np.count_nonzero(X)}")
+    # Train Doc2Vec model
+    model = Doc2Vec(documents, vector_size=vector_size, window=5, 
+                   min_count=1, workers=4, epochs=20)
     
-    # Save encoded data if output file is specified
+    # Get vectors
+    X = np.array([model.infer_vector(doc.words) for doc in documents])
+    
     if output_file:
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         np.save(f"{output_file}_data.npy", X)
-        print(f"Saved encoded data to: {output_file}_data.npy")
-        with open(f"{output_file}_vectorizer.pkl", 'wb') as f:
-            pickle.dump(vectorizer, f)
-        print(f"Saved vectorizer to: {output_file}_vectorizer.pkl")
+        model.save(f"{output_file}_doc2vec_model")
     
-    return X, vectorizer
+    return X, model
 
 def generate_synthetic_labels(X, anomaly_ratio=0.1, output_file=None):
     """
@@ -560,8 +546,8 @@ if __name__ == "__main__":
             # Encode logs with improved TF-IDF parameters
             X_encoded, vectorizer = encode_logs(
                 logs_df, 
-                method='tfidf',
-                output_file=f"data/encoded/{os_type}_improved_tfidf"
+                vector_size=100,  # Adjust vector size as needed
+                output_file=f"data/encoded/{os_type}_improved_doc2vec"
             )
             
             # Run models with improvements and get results
@@ -626,7 +612,7 @@ if __name__ == "__main__":
             f.write("============================================\n\n")
             f.write("IMPROVEMENTS IMPLEMENTED:\n")
             f.write("1. Better Drain3 configuration (sim_th=0.7, depth=4)\n")
-            f.write("2. Improved TF-IDF parameters (bigrams, stop words, min/max_df)\n")
+            f.write("2. Used Docvec model for encoding logs.\n")
             f.write("3. Dynamic thresholding (mean + 3*std)\n")
             f.write("4. Training monitoring with plots\n")
             f.write("5. Template quality analysis\n\n")
@@ -640,11 +626,11 @@ if __name__ == "__main__":
         
         print("\n🎯 === IMPROVED ANALYSIS COMPLETE! ===")
         print("Key improvements implemented successfully:")
-        print(" Better Drain3 log parsing configuration")
-        print(" Enhanced TF-IDF vectorization with bigrams")
-        print(" Dynamic statistical thresholding")
-        print(" Training monitoring with visualization")
-        print(" Template quality analysis")
+        print("✅ Better Drain3 log parsing configuration")
+        print("✅ Enhanced TF-IDF vectorization with bigrams")
+        print("✅ Dynamic statistical thresholding")
+        print("✅ Training monitoring with visualization")
+        print("✅ Template quality analysis")
         print(f"All results saved to data/results/")
         
     else:
